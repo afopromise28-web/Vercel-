@@ -860,6 +860,7 @@ window.UW_FIREBASE = {
       if (r[0]) return { admin: true, status: 'approved' };
       var d = r[1];
       if (d && d.status === 'approved') return { admin: false, status: 'approved' };
+      if (!d || !d.status) return createPendingMembership(f, u, u.displayName).then(function () { return Promise.reject(new Error('Your request has been sent to the admin. You can sign in once it is approved.')); });
       var status = d && d.status || 'pending';
       return Promise.reject(new Error(status === 'rejected' ? 'Your signup request was not approved. You can request access again from the Sign up tab.' : 'Your account is awaiting admin approval. You can sign in after your request is approved.'));
     });
