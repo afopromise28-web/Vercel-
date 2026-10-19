@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Admin roster: ONE document, config/admins = { uids: [...], emails: [...] }.
+    // Max 3 admins is enforced here. Create it once in the Firebase console.
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(db)/documents/config/admins)
+        && request.auth.uid in get(/databases/$(db)/documents/config/admins).data.uids;
+    }
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    match /config/admins {
+      allow read: if request.auth != null && request.auth.uid in resource.data.uids;
+      allow create, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.uids.size() >= 1
+        && request.resource.data.uids.size() <= 3
+        && request.resource.data.emails.size() == request.resource.data.uids.size()
+        && request.resource.data.keys().hasOnly(['uids', 'emails', 'updatedAt']);
+    }
+
+    match /users/{uid} {
+      allow read: if owner(uid) || isAdmin();
+      allow create: if owner(uid) && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      allow update: if isAdmin()
+        || (owner(uid) && request.resource.data.get('status', null) == resource.data.get('status', null))
+        // first request, or re-applying after a rejection. An approved user can never go back to pending.
+        || (owner(uid) && request.resource.data.status == 'pending' && resource.data.get('status', null) in [null, 'rejected']);
+    }
+
+    match /membershipRequests/{uid} {
+      allow read: if owner(uid) || isAdmin();
+      allow create: if owner(uid) && request.resource.data.status == 'pending';
+      allow update: if isAdmin()
+        || (owner(uid) && request.resource.data.status == 'pending' && resource.data.status in ['pending', 'rejected']);
+    }
+
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow write: if owner(uid);
+    }
+  }
+}
